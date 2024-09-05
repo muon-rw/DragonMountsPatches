@@ -1,0 +1,17 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "dev.muon.dragon_mounts_patches.mixin",
+  "refmap": "dragon_mounts_patches.refmap.json",
+  "compatibilityLevel": "JAVA_17",
+  "mixins": [
+    "KeyMappingsMixin"
+  ],
+  "client": [
+  ],
+  "server": [
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

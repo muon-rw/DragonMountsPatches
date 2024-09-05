@@ -1,0 +1,213 @@
+plugins {
+    id 'eclipse'
+    id 'idea'
+    id 'maven-publish'
+    id 'net.minecraftforge.gradle' version '[6.0,6.2)'
+    id 'org.parchmentmc.librarian.forgegradle' version '1.+'
+    id "net.darkhax.curseforgegradle" version "1.0.7"
+    id 'org.spongepowered.mixin' version '0.7-SNAPSHOT'
+}
+
+version = mod_version
+group = mod_group_id
+
+base {
+    archivesName = mod_id
+}
+
+java.toolchain.languageVersion = JavaLanguageVersion.of(17)
+
+jarJar.enable()
+
+println "Java: ${System.getProperty 'java.version'}, JVM: ${System.getProperty 'java.vm.version'} (${System.getProperty 'java.vendor'}), Arch: ${System.getProperty 'os.arch'}"
+minecraft {
+    mappings channel: 'parchment', version: parchment_version
+    copyIdeResources = true
+    runs {
+        configureEach {
+            workingDirectory project.file('run')
+            property 'forge.logging.markers', 'REGISTRIES'
+            property 'forge.logging.console.level', 'debug'
+
+            mods {
+                "${mod_id}" {
+                    source sourceSets.main
+                }
+            }
+        }
+
+        client {
+            property 'forge.enabledGameTestNamespaces', mod_id
+        }
+        server {
+            property 'forge.enabledGameTestNamespaces', mod_id
+            args '--nogui'
+        }
+        gameTestServer {
+            property 'forge.enabledGameTestNamespaces', mod_id
+        }
+        data {
+            workingDirectory project.file('run-data')
+
+            args '--mod', mod_id, '--all', '--output', file('src/generated/resources/'), '--existing', file('src/main/resources/')
+        }
+    }
+}
+
+sourceSets.main.resources { srcDir 'src/generated/resources' }
+
+repositories {
+    maven {
+        // CurseForge
+        url "https://www.cursemaven.com"
+        content {
+            includeGroup "curse.maven"
+        }
+    }
+    exclusiveContent {
+        forRepository {
+            maven {
+                name = "Modrinth"
+                url = "https://api.modrinth.com/maven"
+            }
+        }
+        forRepositories(fg.repository) // Only add this if you're using ForgeGradle, otherwise remove this line
+        filter {
+            includeGroup "maven.modrinth"
+        }
+    }
+    maven {
+        // Curios
+        url "https://maven.theillusivec4.top"
+        content {
+            includeGroupByRegex "top\\.theillusivec4.*"
+        }
+    }
+    maven {
+        // The One Probe
+        url "https://maven.k-4u.nl"
+        content {
+            includeGroup "mcjty.theoneprobe"
+        }
+    }
+    maven {
+        // Patchouli
+        url "https://maven.blamejared.com"
+        content {
+            includeGroup "vazkii.patchouli"
+            includeGroupByRegex "net\\.darkhax.*"
+            includeGroupByRegex "com\\.blamejared.*"
+            includeGroup "org.openzen.zencode"
+            includeGroup "mezz.jei"
+        }
+    }
+    maven {
+        // Shadows
+        url "https://maven.shadowsoffire.dev/releases"
+        content {
+            includeGroup "dev.shadowsoffire"
+        }
+    }
+    maven { url 'https://maven.shedaniel.me/' }
+    maven { url 'https://maven.kosmx.dev/' }
+    maven { url 'https://jitpack.io' }
+}
+
+dependencies {
+    minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
+
+    // Mixin
+    annotationProcessor "org.spongepowered:mixin:${mixin_version}:processor"
+    compileOnly(annotationProcessor("io.github.llamalad7:mixinextras-common:${mixin_extras_version}"))
+    implementation(jarJar("io.github.llamalad7:mixinextras-forge:${mixin_extras_version}")) {
+        jarJar.ranged(it, "[${mixin_extras_version},)")
+    }
+
+    implementation fg.deobf("mezz.jei:jei-${minecraft_version}-forge:${jei_version}")
+
+    implementation fg.deobf("curse.maven:dragon-mounts-legacy-375088:5335579")
+}
+
+tasks.named('processResources', ProcessResources).configure {
+    var replaceProperties = [
+            minecraft_version: minecraft_version, minecraft_version_range: minecraft_version_range,
+            forge_version: forge_version, forge_version_range: forge_version_range,
+            loader_version_range: loader_version_range,
+            mod_id: mod_id, mod_name: mod_name, mod_license: mod_license, mod_version: mod_version,
+            mod_authors: mod_authors, mod_description: mod_description,
+    ]
+    inputs.properties replaceProperties
+
+    filesMatching(['META-INF/mods.toml', 'pack.mcmeta']) {
+        expand replaceProperties + [project: project]
+    }
+}
+
+// Example for how to get properties into the manifest for reading at runtime.
+tasks.named('jar', Jar).configure {
+    manifest {
+        attributes([
+                'Specification-Title'     : mod_id,
+                'Specification-Vendor'    : mod_authors,
+                'Specification-Version'   : '1', // We are version 1 of ourselves
+                'Implementation-Title'    : project.name,
+                'Implementation-Version'  : project.jar.archiveVersion,
+                'Implementation-Vendor'   : mod_authors,
+                'Implementation-Timestamp': new Date().format("yyyy-MM-dd'T'HH:mm:ssZ")
+        ])
+    }
+
+    // This is the preferred method to reobfuscate your jar file
+    finalizedBy 'reobfJar'
+}
+
+mixin {
+    if (project.mixin.toBoolean()) {
+        config "${mod_id}.mixins.json"
+        add sourceSets.main, "${mod_id}.refmap.json"
+    }
+}
+
+publishing {
+    publications {
+        register('mavenJava', MavenPublication) {
+            artifact jar
+        }
+    }
+    repositories {
+        maven {
+            url "file://${project.projectDir}/mcmodsrepo"
+        }
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8' // Use the UTF-8 charset for Java compilation
+}
+
+tasks.jarJar.configure {
+    archiveClassifier = ""
+    dependsOn('reobfJar')
+}
+
+reobf {
+    jarJar {}
+}
+
+jar.finalizedBy('reobfJarJar')
+
+task publishCurseForge(type: net.darkhax.curseforgegradle.TaskPublishCurseForge) {
+    apiToken = System.getenv("CF_TOKEN")
+
+    def mainFile = upload(1055023, jar)
+    mainFile.displayName = "Forge/Neoforge-${rootProject.version}+${minecraft_version}"
+    mainFile.releaseType = "release"
+    mainFile.changelog = new File("$project.rootDir/CHANGELOG.md").getText('UTF-8')
+    mainFile.changelogType = "markdown"
+    forge_mod_loaders.split(", ").each {
+        mainFile.addModLoader(it)
+    }
+    forge_game_versions.split(", ").each {
+        mainFile.addGameVersion(it)
+    }
+}
